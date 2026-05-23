@@ -191,3 +191,7 @@ Large blocks reduce the number of blocks per sequence and thus reduce indirectio
 Small blocks greatly reduce fragmentation but require many more block-table lookups and, if swapping is used, create many tiny PCIe transfers that cannot fully utilize bandwidth, making swapping inefficient.
 
 In practice, vLLM uses a medium block size to balance these effects, and for small blocks it often prefers recomputation over swapping because recomputation cost is nearly independent of block size while swap overhead grows sharply with smaller blocks.
+
+### Describe vLLM’s copy-on-write mechanism for parallel sampling and how reference-counted physical blocks are used
+
+In parallel sampling, the prompt KV blocks are shared across all samples. When a sample eventually needs to write into a shared KV block (where multiple samples still point), vLLM allocates a new block, copies the old data into it, and then that sample continues writing into its private block, leaving the other samples’ shared block unchanged.

@@ -271,3 +271,26 @@ Ping-pong pipeline parallelism in MegaScale-Infer means splitting the global dec
 While micro-batch i is in attention on the M-cluster, an earlier micro-batch i−1 is in the FFN experts on the N-cluster and the M2N/N2M transfers for another micro-batch are happening, which hides most of the cross-cluster communication and prevents either cluster from sitting idle.
 
 ## 11. Spec Infer
+
+### What is the key idea of Spec Infer?
+
+SpecInfer uses small speculative models to generate a tree of candidate token sequences instead of a single sequence, and then runs the large LLM once as a token‑tree verifier, using tree‑based parallel attention to check all branches in parallel while preserving the same output distribution as standard incremental decoding.
+
+### How would using SpecInfer affect time-to-first-token (TTFT)? Would TTFT go up or down compared to plain decoding, and why?
+
+SpecInfer increases TTFT, because after the usual prefill the system must first let the SSM speculate and then run an extra verification pass on the large LLM before emitting the first token. However, it reduces the per-token latency after TTFT, since each verification step can accept multiple speculated tokens in parallel while preserving the original model’s output distribution
+
+### Can SpecInfer be applied to any arbitrary model that you might be using for inference (e.g., a random closed-source LLM API)? Explain why or why not
+
+SpecInfer cannot be applied to arbitrary black‑box models, because it requires small speculative models that are trained or distilled to closely match the target LLM’s output distribution. Without such aligned SSMs, most speculated tokens would be rejected, so speculative decoding would add overhead instead of speeding things up
+
+### You want to speed up an agentic workflow or complex multi-step tool-using assistant on your own PC. Which paper would you choose to rely on more heavily, CacheBlend or SpecInfer, and why?
+
+For an agentic workflow or complex multi-step tool-using assistant on a local machine, CacheBlend is the more appropriate paper. It directly optimizes RAG-style long-context inputs by reusing and selectively recomputing KV caches across chunks, reducing TTFT and increasing throughput without hurting quality.
+
+SpecInfer accelerates token-by-token decoding via speculative trees, but does not directly address the cache reuse patterns that dominate multi-step, retrieval-heavy workflows
+
+### SpecInfer suffers from tree-attention blocking the GPU while the big model is verifying. Why didn’t the authors simply use Sarathi-Serve’s chunked prefill style to reduce this blocking, and what kind of challenges or assumptions might prevent directly combining the two?
+
+Because it’s fundamentally a topology problem: Sarathi‑Serve’s chunked prefill assumes a linear sequence split into contiguous time‑chunks, while SpecInfer’s LLM verification runs tree attention over a token tree with shared prefixes and divergent branches. The bottleneck is the attention topology: to combine them you’d need a notion of ‘tree chunks’ that preserves the tree’s parent–child relationships and KV reuse, which is nontrivial and not addressed in the paper
+

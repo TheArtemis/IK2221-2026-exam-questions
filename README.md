@@ -298,6 +298,16 @@ Because it’s fundamentally a topology problem: Sarathi‑Serve’s chunked pre
 
 ### What is the key idea of cache blend?
 
+The key idea of cache blend is to reuse the kv cache from document chunks to speed up RAG without sacrificing accuracy.
+
+At initialization time prefill is run on all the chunks so that we can store the kv cache.
+
+When a question is asked to the LLM the chunks related to that question are retrieved and their kv caches are concatenated. The problem now is that the single chunks have self attention but it's missing the cross attention between different chunks.
+
+Cache blend, layer by layer re-computes the attention of the HKVD tokens (thos tokens that have a high error) comparing it with all the tokens from all chunks (This is why it scales quadratically, not n^2 but still k^2 with k << n)
+
+### Why didn't the authors of the paper use sarathi serve to speed up the problem of the tree verification holding up the GPU?
+
 Because it’s fundamentally a topology problem: Sarathi‑Serve’s chunked prefill assumes a linear sequence split into contiguous time‑chunks, while SpecInfer’s LLM verification runs tree attention over a token tree with shared prefixes and divergent branches.
 
 The bottleneck is the attention topology: to combine them you’d need a notion of ‘tree chunks’ that preserves the tree’s parent–child relationships and KV reuse, which is nontrivial and not addressed in the paper.
@@ -306,4 +316,20 @@ The bottleneck is the attention topology: to combine them you’d need a notion 
 
 In CacheBlend, each layer loads concatenated cached KV for all n tokens, but only recomputes attention for a small subset k of high-error tokens, which still attend over all n tokens. This makes the per-layer cost scale like a constant times n^2, so TTFT vs. chunk size is still quadratic, but with a much smaller constant than full prefill because k << n, giving a 2-3x TTFT reduction.
 
+### How does Cache blend pipelines operations?
 
+CacheBlend pipelines operations by recomputing HKVD tokens' KV on layer l while simultaneously loading the cached KV for layer l+1, so the latency per step is bounded by the maximum of compute time and load time, not their sum. The controller chooses a recompute fraction and storage tier such that the per-layer recompute time is no longer than the KV load time, allowing KV caches to sit on cheaper, slower devices without increasing TTFT.
+
+## 13. LLumnix
+
+### What is virtual usage in Llumnix and how does it let one simple load-balancing rule handle several different scheduling goals?
+
+n Llumnix, virtual usage is an accounting value for a request’s expected memory demand, not just its current physical memory use.
+
+By inflating that value for queued or high-priority requests, Llumnix can use one simple rule — send work to the freest instance — and still get load balancing, priority isolation, and de-fragmentation.
+
+### Llumnixs live migration keeps downtime almost constant 20–30 ms even for 8k-token requests. Why is the downtime independent of sequence length?
+
+Llumnix’s downtime is independent of sequence length because the KV cache is append‑only, so almost all previously computed KV blocks can be copied to the destination GPU in parallel with ongoing decoding.
+
+It only needs to pause briefly to transfer the last small set of blocks generated during the copy window, so the pause is about one decode iteration (20–30 ms) regardless of how long the sequence is.

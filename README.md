@@ -246,4 +246,28 @@ Each GPU maintains a credit-based buffer for expert pulls: when it needs to fetc
 
 Janus is a training framework built for fixed-length, teacher-forced MoE training where All-to-All communication dominates and the R formula can choose between moving tokens or experts once per job; in inference and speculative decoding, sequence lengths and batch shapes change per step, the main bottlenecks become FFN and KV-cache memory bandwidth rather than MoE All-to-All, and there is no backward pass to hide expert movement, so Janus’s mechanisms do not apply.
 
-### 10. Mega Scale Infer
+## 10. Mega Scale Infer
+
+### Why does MegaScale-Infer need a custom M2N communication library instead of NCCL for token dispatch and aggregation?
+
+MegaScale-Infer uses a custom M2N communication library instead of NCCL because NCCL is optimized for collective patterns like AllReduce/All-to-All, while disaggregated attention–expert layers generate a dynamic M-senders to N-receivers token dispatch/aggregation pattern between the two clusters. In this pattern, NCCL’s GPU→CPU→NIC copies, group-initialization overhead, and implicit GPU synchronizations cause high and unstable latency, so MegaScale-Infer’s library instead uses RDMA WRITE-with-immediate and GPUDirect to send tensors directly GPU→NIC→network→NIC→GPU, removing CPU bounces and collective setup and adding ACK-prioritization and tuned congestion control for much better median and tail latency.
+
+### What are the key ideas of Mega Scale Infer?
+
+The key idea of MegaScale-Infer is to exploit the asymmetry in MoE decoding by dis-aggregating attention and expert FFNs onto separate GPU clusters so each can use hardware and parallelism tuned to its bottleneck.
+
+Attention is dominated by KV-cache reads and is memory-bandwidth/capacity-bound, while the MoE FFN side is dominated by expert GEMMs and wants compute-dense GPUs and large effective batch sizes, so putting both on the same GPUs under utilizes one side.
+
+MegaScale-Infer puts attention on a memory-rich “M-cluster” (e.g., H20) and experts on a compute-dense “N-cluster” (e.g., L40S), then uses ping-pong pipeline parallelism to micro-batch requests and keep both clusters busy while overlapping M2N/N2M communication with computation
+
+### Is attention in need of high memory bandwidth? Why?
+
+Yes. Attention during decoding needs high memory bandwidth because, for each token in the batch, it has to read that request’s entire KV cache (K and V for all previous tokens across all heads), which is large and grows with sequence length and batch size. This makes the attention module spend most of its time moving KV data between GPU memory and compute units, so its performance is limited by how fast memory can be read and written, not by raw FLOPs
+
+### What is ping-pong pipeline parallelism in MegaScale-Infer, and why is it needed?
+
+Ping-pong pipeline parallelism in MegaScale-Infer means splitting the global decode batch into several micro-batches and alternating them between the attention (M) and expert (N) clusters so that different micro-batches are in different stages at the same time. 
+
+While micro-batch i is in attention on the M-cluster, an earlier micro-batch i−1 is in the FFN experts on the N-cluster and the M2N/N2M transfers for another micro-batch are happening, which hides most of the cross-cluster communication and prevents either cluster from sitting idle.
+
+## 11. Spec Infer

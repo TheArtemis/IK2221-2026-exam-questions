@@ -46,14 +46,14 @@ Enterprise networks have a surprisingly high amount of middle boxes and that the
 
 APLOMB proposes three redirection techniques: bounce redirection, IP redirection, and DNS redirection.
 
-In bounce redirection, the enterprise gateway tunnels all incoming and outgoing traffic to a cloud PoP, where virtual middleboxes process it, and the cloud then tunnels it back to the enterprise.
+In bounce redirection, the enterprise gateway tunnels all incoming and outgoing traffic to a cloud PoP, where virtual middle-boxes process it, and the cloud then tunnels it back to the enterprise.
 This adds an extra “bounce” via the cloud for every packet and causes excessive latency.
 
-In IP redirection, the cloud advertises the enterprise’s IP prefix via BGP from multiple PoPs so client traffic is routed directly to some PoP, processed there, and then tunneled to the enterprise gateway, but BGP chooses which PoP is used and the forward and reverse paths may traverse different PoPs, breaking stateful middleboxes and giving the enterprise no control over PoP choice.
+In IP redirection, the cloud advertises the enterprise’s IP prefix via BGP from multiple PoPs so client traffic is routed directly to some PoP, processed there, and then tunneled to the enterprise gateway, but BGP chooses which PoP is used and the forward and reverse paths may traverse different PoPs, breaking stateful middle-boxes and giving the enterprise no control over PoP choice.
 
 In DNS redirection, the cloud runs DNS on behalf of the enterprise and answers client lookups with the IP of a specific cloud PoP, then uses the APLOMB gateway to ensure both directions of each flow go through that same PoP; this avoids the extra latency of bounce redirection and the path asymmetry and lack of control of IP redirection, so the authors select DNS redirection.
 
-### What are some of the remaining concerns in the APLOMB paper 'Making middleboxes someone elses problem'
+### What are some of the remaining concerns in the APLOMB paper 'Making middle-boxes someone elses problem'
 
 The main remaining concerns are the increased security risk of sending all enterprise traffic to a third‑party cloud and the extra bandwidth required to detour all traffic through the cloud, which raises cost and performance concerns.
 
@@ -118,7 +118,7 @@ When most of the service chain is stateful and cannot be offloaded, more work mu
 
 ### Does the Metron‑provided performance benefit increase or decrease as you increase the amount of stateful computation on the servers? Why? (Hint: recall the DPI 40‑Gbps experiment vs the original 100‑Gbps service chain
 
-The Metron benefit decreases as stateful computation on servers increases. 
+The Metron benefit decreases as stateful computation on servers increases.
 
 Metron gains most when it can offload expensive stateless classification to hardware and avoid inter‑core transfer.
 
@@ -204,4 +204,46 @@ In practice, vLLM uses a medium block size to balance these effects, and for sma
 
 In parallel sampling, the prompt KV blocks are shared across all samples. When a sample eventually needs to write into a shared KV block (where multiple samples still point), vLLM allocates a new block, copies the old data into it, and then that sample continues writing into its private block, leaving the other samples’ shared block unchanged.
 
-## 8.
+## 8. Sarathi Serve
+
+### What is the key idea in Sarathi Serve?
+
+The key innovation in Sarathi-Serve is to recognize that prefill and decode have very different hardware behavior: prefill is compute‑intensive, while decode is more memory‑bound and benefits a lot from batching.
+
+Sarathi-Serve introduces chunked‑prefills, splitting each prefill into fixed‑size chunks and scheduling at most one prefill chunk together with many decodes in each iteration, which avoids long stalls and visible lags in token streaming.
+
+### Suppose your system had a few cheap gaming GPUs with lots of computational power but relatively slow memory, and server‑grade GPUs with lots of fast and expensive memory. Both are connected with NVLink (not possible today, but imagine). How would you structure prefill and decode operations on the system? What should run where and why?
+
+With cheap gaming GPUs that have strong compute but slower memory, and server‑grade GPUs with lots of fast memory, you would run prefills on the gaming GPUs (batch size ≈ 1, using their compute) and then ship the activations / KV cache over NVLink to the server‑grade GPUs, where you run the decode phase in large batches using their big, fast memory.
+
+### Why doesn't prefill benefits from batching?
+
+Prefill does not benefit much from batching because it is very compute‑intensive and already processes all tokens of a prompt in parallel, so even with batch size 1 it essentially saturates the GPU; increasing the batch size adds little extra throughput.
+
+### Why does decode benefits from batching?
+
+Decode generates only one token per request per iteration, so a single request under‑utilizes the GPU; by batching many decode requests together, we can keep the GPU busy and greatly improve throughput.
+
+### how does having a fixed token budget per iteration help Sarathi-Serve control time‑between‑tokens (TBT)?
+
+Sarathi-Serve sets a fixed token budget per iteration and always fills it first with all ongoing decodes, then with at most one prefill chunk, so that the work per iteration stays roughly constant and the time‑between‑tokens (TBT) stays within the latency SLO.
+
+### Why are previous approaches inefficient?
+
+Previous approaches are inefficient because request‑level batching wastes compute on padding shorter sequences up to the longest one and then keeps running with a shrinking effective batch size as some requests finish. In addition, iteration‑level schedulers that admit unconstrained full prefills into decode iterations create large, variable iteration times that cause generation stalls and unreliable, high time‑between‑tokens (TBT).
+
+## 9. Janus
+
+### What is Janus’s data-centric paradigm, and why does it reduce inter-node traffic compared with the usual expert-centric approach?
+
+In the usual expert-centric MoE setup, experts are fixed on GPUs and, after routing, each GPU sends its token activations across machines to the GPUs hosting the selected experts, then receives the expert outputs back; this incurs two large All-to-All communications per MoE layer and can make the inter-node network the bottleneck. In Janus’s data-centric paradigm, tokens stay on their home GPUs and the system instead pulls the required expert weights to those GPUs; because each expert module is much smaller than the batch’s token activations, each machine transfers each expert only once per iteration and then reuses it from a local cache, which eliminates the All-to-All token shuffles and can reduce inter-node traffic by up to 16×
+
+### Janus treats every expert pull as an independent task. Explain how (a) the credit-based buffer in each GPU and (b) the intra-/inter-node cache hierarchy together overlap computation with communication and relieve RDMA and NVLink congestion
+
+Each GPU maintains a credit-based buffer for expert pulls: when it needs to fetch an expert, it consumes a credit and issues the pull; while that expert is being copied, the GPU computes on a previously fetched expert, and only when that computation finishes is the credit released. This limits the number of concurrent pulls so RDMA/NVLink are not overloaded, while guaranteeing that communication is overlapped with useful computation.
+
+### Why can't Janus be used for inference?
+
+Janus is a training framework built for fixed-length, teacher-forced MoE training where All-to-All communication dominates and the R formula can choose between moving tokens or experts once per job; in inference and speculative decoding, sequence lengths and batch shapes change per step, the main bottlenecks become FFN and KV-cache memory bandwidth rather than MoE All-to-All, and there is no backward pass to hide expert movement, so Janus’s mechanisms do not apply.
+
+### 10. Mega Scale Infer

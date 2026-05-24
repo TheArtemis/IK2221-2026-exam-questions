@@ -4,6 +4,10 @@ This is a collection of exam practice questions for IK2221 for the year 2026. It
 
 ## 1. Cheetah
 
+### What is the main problem with stateful layer 4 load balancers that the stateless version of cheetah solved?
+
+Stateful load balancers require a lot of memory and complex data structures that can only be deployed on software switches, while stateless cheetah can be also deployed on hardware switches
+
 ### What is Per-Connection-Consistency (PCC) and is it difficult for traditional stateless load balancers to guarantee PCC?
 
 Per connection consistency is the ability to send all packets of a given connection to the same server, even when servers or load balancers are added or removed.
@@ -32,7 +36,7 @@ An attacker can flood the stateful Cheetah LB with many TCP SYNs using different
 
 The key idea of Cheetah is to encode the connection‑to‑server mapping into a cookie carried in every packet of a connection, so the mapping is stored in the packet header rather than only in the LB’s state. This solves the problem of guaranteeing Per‑Connection‑Consistency while still allowing arbitrary load-balancing mechanisms and dynamic changes in the number of servers and load balancers.
 
-## 2. Metron
+## 2. APLOMB
 
 ### What are the main implications of the survey circulated by the APLOMB authors on the deployment of network functions in a network?
 
@@ -64,6 +68,10 @@ can sometimes have lower latency than:
     Enterprise -> Client
 
 directly via the default Internet path.
+
+### How much state must be stored at the Aplomb gateway in order to route packets to the correct cloud?
+
+In order to route packets to the correct cloud the Aplomb gateway needs to know for each IP source prefix to which cloud it should be sent to.
 
 ## 3. CLick
 
@@ -195,3 +203,5 @@ In practice, vLLM uses a medium block size to balance these effects, and for sma
 ### Describe vLLM’s copy-on-write mechanism for parallel sampling and how reference-counted physical blocks are used
 
 In parallel sampling, the prompt KV blocks are shared across all samples. When a sample eventually needs to write into a shared KV block (where multiple samples still point), vLLM allocates a new block, copies the old data into it, and then that sample continues writing into its private block, leaving the other samples’ shared block unchanged.
+
+## 8.

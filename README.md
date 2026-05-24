@@ -333,3 +333,17 @@ By inflating that value for queued or high-priority requests, Llumnix can use on
 Llumnix’s downtime is independent of sequence length because the KV cache is append‑only, so almost all previously computed KV blocks can be copied to the destination GPU in parallel with ongoing decoding.
 
 It only needs to pause briefly to transfer the last small set of blocks generated during the copy window, so the pause is about one decode iteration (20–30 ms) regardless of how long the sequence is.
+
+## 14. Pie
+
+### What is the key idea of Pie?
+
+The key idea of Pie is to replace the monolithic, opaque prefill–decode loop in today’s LLM serving systems with a programmable model where applications run inferlets that control inference through a fine‑grained API.
+
+These inferlets get explicit control over KV cache management, the generation loop (prefill and decode), and integration of computation and IO, so each application can implement its own caching strategies, decoding logic, and agentic workflows instead of relying on fixed system‑wide policies.
+
+### What are the three requirements that current inference services are missing?
+
+R1: Application‑specific KV cache control.
+R2: Customizable generation processes (per‑request control over the decoding loop).
+R3: Integrated computation and IO inside the generation workflow.

@@ -294,3 +294,16 @@ SpecInfer accelerates token-by-token decoding via speculative trees, but does no
 
 Because it’s fundamentally a topology problem: Sarathi‑Serve’s chunked prefill assumes a linear sequence split into contiguous time‑chunks, while SpecInfer’s LLM verification runs tree attention over a token tree with shared prefixes and divergent branches. The bottleneck is the attention topology: to combine them you’d need a notion of ‘tree chunks’ that preserves the tree’s parent–child relationships and KV reuse, which is nontrivial and not addressed in the paper
 
+## 12. Cache Blend
+
+### What is the key idea of cache blend?
+
+Because it’s fundamentally a topology problem: Sarathi‑Serve’s chunked prefill assumes a linear sequence split into contiguous time‑chunks, while SpecInfer’s LLM verification runs tree attention over a token tree with shared prefixes and divergent branches.
+
+The bottleneck is the attention topology: to combine them you’d need a notion of ‘tree chunks’ that preserves the tree’s parent–child relationships and KV reuse, which is nontrivial and not addressed in the paper.
+
+### Explain how TTFT vs chunk size behaves in CacheBlend. What is the shape of this relationship, and why is it still quadratic?
+
+In CacheBlend, each layer loads concatenated cached KV for all n tokens, but only recomputes attention for a small subset k of high-error tokens, which still attend over all n tokens. This makes the per-layer cost scale like a constant times n^2, so TTFT vs. chunk size is still quadratic, but with a much smaller constant than full prefill because k << n, giving a 2-3x TTFT reduction.
+
+

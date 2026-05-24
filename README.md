@@ -266,7 +266,7 @@ Yes. Attention during decoding needs high memory bandwidth because, for each tok
 
 ### What is ping-pong pipeline parallelism in MegaScale-Infer, and why is it needed?
 
-Ping-pong pipeline parallelism in MegaScale-Infer means splitting the global decode batch into several micro-batches and alternating them between the attention (M) and expert (N) clusters so that different micro-batches are in different stages at the same time. 
+Ping-pong pipeline parallelism in MegaScale-Infer means splitting the global decode batch into several micro-batches and alternating them between the attention (M) and expert (N) clusters so that different micro-batches are in different stages at the same time.
 
 While micro-batch i is in attention on the M-cluster, an earlier micro-batch i−1 is in the FFN experts on the N-cluster and the M2N/N2M transfers for another micro-batch are happening, which hides most of the cross-cluster communication and prevents either cluster from sitting idle.
 

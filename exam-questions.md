@@ -290,6 +290,13 @@ SpecInfer accelerates token-by-token decoding via speculative trees, but does no
 
 Because it’s fundamentally a topology problem: Sarathi‑Serve’s chunked prefill assumes a linear sequence split into contiguous time‑chunks, while SpecInfer’s LLM verification runs tree attention over a token tree with shared prefixes and divergent branches. The bottleneck is the attention topology: to combine them you’d need a notion of ‘tree chunks’ that preserves the tree’s parent–child relationships and KV reuse, which is nontrivial and not addressed in the paper
 
+
+### Why didn't the authors of the paper use sarathi serve to speed up the problem of the tree verification holding up the GPU?
+
+Because it’s fundamentally a topology problem: Sarathi‑Serve’s chunked prefill assumes a linear sequence split into contiguous time‑chunks, while SpecInfer’s LLM verification runs tree attention over a token tree with shared prefixes and divergent branches.
+
+The bottleneck is the attention topology: to combine them you’d need a notion of ‘tree chunks’ that preserves the tree’s parent–child relationships and KV reuse, which is nontrivial and not addressed in the paper.
+
 ## 12. Cache Blend
 
 ### What is the key idea of cache blend?
@@ -302,11 +309,6 @@ When a question is asked to the LLM the chunks related to that question are retr
 
 Cache blend, layer by layer re-computes the attention of the HKVD tokens (thos tokens that have a high error) comparing it with all the tokens from all chunks (This is why it scales quadratically, not n^2 but still k^2 with k << n)
 
-### Why didn't the authors of the paper use sarathi serve to speed up the problem of the tree verification holding up the GPU?
-
-Because it’s fundamentally a topology problem: Sarathi‑Serve’s chunked prefill assumes a linear sequence split into contiguous time‑chunks, while SpecInfer’s LLM verification runs tree attention over a token tree with shared prefixes and divergent branches.
-
-The bottleneck is the attention topology: to combine them you’d need a notion of ‘tree chunks’ that preserves the tree’s parent–child relationships and KV reuse, which is nontrivial and not addressed in the paper.
 
 ### Explain how TTFT vs chunk size behaves in CacheBlend. What is the shape of this relationship, and why is it still quadratic?
 

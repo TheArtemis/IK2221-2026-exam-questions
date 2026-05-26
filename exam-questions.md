@@ -345,3 +345,18 @@ These inferlets get explicit control over KV cache management, the generation lo
 R1: Application‑specific KV cache control.
 R2: Customizable generation processes (per‑request control over the decoding loop).
 R3: Integrated computation and IO inside the generation workflow.
+
+## EXTRA
+
+### Estimate how long will it take to produce the first token for a 70-Billion parameter model in 16-bit precision if it needs to be loaded from an SSD first into the GPU. Make some assumptions if you are missing some information) and proceed with a back of the envelope (approximate) computation (you can keep fractions if you prefer).
+
+70 B parameters, where each parameter is a 16-bit -> 2 bytes.
+The delay is dominated by the time to transfer from the SSD to the GPU. Since modern SSDs can transfer at about 5 GB/s to 7 GB/s the total amount of time to transfer everything in memory will be 70 * 2 / 7 = 20 seconds.
+
+Then depending on the prompt's length and to do prefill and the first decode it takes approximately 0.5s - 1s so we add this to the final result.
+
+It takes approximately 20-21 seconds
+
+### What is KV Cache, what is in it, and why is it useful?
+
+For each layer, the transformer computes `Q`, `K`, and `V` for all tokens. Computing `K` and `V` for a long prompt (prefill) is expensive, but once computed, the `K` and `V` for past tokens do not change. The KV cache stores these `K` and `V` tensors in memory, so during decoding the model only recomputes `Q`, `K`, and `V` for the new token and reuses the cached `K`/`V` for all previous tokens, saving a lot of time.
